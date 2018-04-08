@@ -114,8 +114,18 @@ func ToParams(in interface{}) (Params, error) {
 		// gets us a StructField
 		fi := typ.Field(i)
 		if tagv := fi.Tag.Get("xml"); tagv != "" && tagv != "xml" && tagv != "sign" {
+			fit := v.Field(i).Type()
+			var val interface{}
+			if fit.Kind() == reflect.Ptr {
+				if v.Field(i).IsNil() {
+					continue
+				}
+				val = v.Field(i).Elem().Interface()
+			} else {
+				val = v.Field(i).Interface()
+			}
 			// set key of map to value in struct field
-			out = append(out, Param{tagv, v.Field(i).String()})
+			out = append(out, Param{tagv, fmt.Sprintf("%v", val)})
 		}
 	}
 	return out, nil

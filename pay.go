@@ -22,37 +22,39 @@ func GetTradeState(s string) string {
 }
 
 type PayResult struct {
-	XMLName        xml.Name `xml:"xml"`
-	ReturnCode     string   `xml:"return_code"`
-	ReturnMsg      string   `xml:"return_msg"`
-	AppId          string   `xml:"appid"`
-	MchId          string   `xml:"mch_id"`
-	NonceStr       string   `xml:"nonce_str"`
-	Sign           string   `xml:"sign"`
-	ResultCode     string   `xml:"result_code"`
-	ErrCode        string   `xml:"err_code"`
-	ErrCodeDesc    string   `xml:"err_code_des"`
-	DeviceInfo     string   `xml:"device_info"`
-	TradeType      string   `xml:"trade_type"`
-	OpenId         string   `xml:"open_id"`
-	IsSubscribe    string   `xml:"is_subscribe"`
-	TradeState     string   `xml:"trade_state"`
-	TradeStateDesc string   `xml:"trade_state_desc"`
-	BankType       string   `xml:"bank_type"`
-	TotalFee       int64    `xml:"total_fee"`
-	FeeType        string   `xml:"fee_type"`
-	CashFee        int64    `xml:"cash_fee"`
-	CashFeeType    string   `xml:"cash_fee_type"`
-	CouponFee      int64    `xml:"coupon_fee"`
-	CouponCount    int      `xml:"coupon_count"`
+	XMLName            xml.Name `xml:"xml"`
+	ReturnCode         string   `xml:"return_code"`
+	ReturnMsg          string   `xml:"return_msg"`
+	AppId              string   `xml:"appid"`
+	MchId              string   `xml:"mch_id"`
+	NonceStr           string   `xml:"nonce_str"`
+	Sign               string   `xml:"sign"`
+	SignType           *string  `xml:"sign_type"`
+	ResultCode         string   `xml:"result_code"`
+	ErrCode            *string  `xml:"err_code"`
+	ErrCodeDesc        *string  `xml:"err_code_des"`
+	DeviceInfo         *string  `xml:"device_info"`
+	TradeType          string   `xml:"trade_type"`
+	OpenId             *string  `xml:"openid"`
+	IsSubscribe        *string  `xml:"is_subscribe"`
+	TradeState         string   `xml:"trade_state"`
+	TradeStateDesc     string   `xml:"trade_state_desc"`
+	BankType           string   `xml:"bank_type"`
+	TotalFee           int64    `xml:"total_fee"`
+	FeeType            *string  `xml:"fee_type"`
+	CashFee            int64    `xml:"cash_fee"`
+	CashFeeType        *string  `xml:"cash_fee_type"`
+	CouponFee          *int64   `xml:"coupon_fee"`
+	CouponCount        *int     `xml:"coupon_count"`
+	SettlementTotalFee *int     `xml:"settlement_total_fee"`
 	// TODO:
 	//coupon_id_$n
 	//coupon_fee_$n
-	TransactionId string `xml:"transaction_id"`
-	OutTradeNO    string `xml:"out_trade_no"`
-	ProductId     string `xml:"product_id"`
-	Attach        string `xml:"attach"`   // 商家数据包
-	TimeEnd       string `xml:"time_end"` // 支付完成时间 yyyyMMddHHmmss
+	TransactionId string  `xml:"transaction_id"`
+	OutTradeNO    string  `xml:"out_trade_no"`
+	ProductId     string  `xml:"product_id"`
+	Attach        *string `xml:"attach"`   // 商家数据包
+	TimeEnd       string  `xml:"time_end"` // 支付完成时间 yyyyMMddHHmmss
 }
 
 func (p *PayResult) IsSuccess() bool {
@@ -61,7 +63,7 @@ func (p *PayResult) IsSuccess() bool {
 
 func (p *PayResult) Error() *Error {
 	if !p.IsSuccess() {
-		return GetError(p.ErrCode)
+		return GetError(*p.ErrCode)
 	}
 	return nil
 }
