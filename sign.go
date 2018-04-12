@@ -1,10 +1,13 @@
 package weixinpay
 
 import (
+	"crypto/hmac"
 	"crypto/md5"
+	"crypto/sha256"
 	"fmt"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -24,10 +27,16 @@ func NewTimestampString() string {
 // Sign the parameter in form of []Param with app key.
 // Empty string and "sign" key is excluded before sign.
 // Please refer to http://pay.weixin.qq.com/wiki/doc/api/app.php?chapter=4_3
-func Sign(params Params, key string) string {
+func Sign(params Params, key string, signType ...string) string {
 	sort.Sort(params)
 	preSignWithKey := params.ToQueryString() + "&key=" + key
-	return fmt.Sprintf("%X", md5.Sum([]byte(preSignWithKey)))
+	if len(signType) < 1 || strings.ToLower(signType[0]) == "md5" {
+		return fmt.Sprintf("%X", md5.Sum([]byte(preSignWithKey)))
+	} else {
+		hash := hmac.New(sha256.New, []byte(key))
+		hash.Write([]byte(preSignWithKey))
+		return fmt.Sprintf("%X", hash.Sum(nil))
+	}
 }
 
 // Verify check the sign

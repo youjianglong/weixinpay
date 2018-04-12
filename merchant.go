@@ -1,10 +1,10 @@
 package weixinpay
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
-
-	"github.com/lunny/log"
+	"reflect"
 )
 
 var (
@@ -33,10 +33,12 @@ func (m *Merchant) IsValid() bool {
 }
 
 // sign and return xml
-func (m *Merchant) Sign(params Params) string {
-	sign := Sign(params, m.AppKey)
-	params = append(params, Param{"sign", sign})
-	return params.ToXmlString()
+func (m *Merchant) Sign(params Params, signType ...string) Params {
+	sType := "md5"
+	if len(signType) > 0 && signType[0] != "" {
+		sType = signType[0]
+	}
+	return append(params, Param{"sign", Sign(params, m.AppKey, sType)})
 }
 
 var (
@@ -44,39 +46,70 @@ var (
 	JSAPI  = "JSAPI"
 	APP    = "APP"
 	WAP    = "WAP"
+	MWEB   = "MWEB"
 )
 
-// 统一下单 https://pay.weixin.qq.com/wiki/doc/api/native.php?chapter=9_1
-func (m *Merchant) PlaceOrder(orderId, goodsname, desc, clientIp, notifyUrl string, amount int64, tradeType string) (*PlaceOrderResponse, error) {
-	var params = Params{
-		{"appid", m.AppId},
-		{"body", goodsname},
-		{"detail", desc},
-		{"mch_id", m.MchId},
-		{"nonce_str", NewNonceString()},
-		{"notify_url", notifyUrl},
-		{"out_trade_no", orderId},
-		{"product_id", orderId},
-		{"spbill_create_ip", clientIp},
-		{"total_fee", fmt.Sprintf("%d", amount)},
-		{"trade_type", tradeType},
+//统一下单
+func (m *Merchant) PlaceOrder(order UnifiedOrder) (*PlaceOrderResponse, error) {
+	if order.NonceStr == "" {
+		order.NonceStr = NewNonceString()
 	}
 
-	postData := []byte(m.Sign(params))
-	log.Debug(string(postData))
-	data, err := doHttpPost(PlaceOrderUrl, postData)
+	if order.TradeType == "" {
+		order.TradeType = MWEB
+	}
+
+	if order.Appid == "" {
+		order.Appid = m.AppId
+	}
+
+	if order.MchId == "" {
+		order.MchId = m.MchId
+	}
+
+	params := Params{}
+
+	sign := ""
+
+	valueOf := reflect.ValueOf(order)
+	typeOf := valueOf.Type()
+	for i := 0; i < valueOf.NumField(); i++ {
+		field := valueOf.Field(i)
+		if field.Kind() == reflect.Ptr && field.IsNil() {
+			continue
+		}
+		tagv := typeOf.Field(i).Tag.Get("xml")
+		if tagv == "" || tagv == "xml" || tagv == "-" {
+			continue
+		}
+		val := fmt.Sprintf("%v", field.Interface())
+		if tagv == "sign" {
+			sign = val
+			continue
+		}
+		params = append(params, Param{tagv, val})
+	}
+
+	var postData string
+
+	if sign == "" {
+		signType := "md5"
+		if order.SignType != nil {
+			signType = *order.SignType
+		}
+		params = m.Sign(params, signType)
+	}
+	postData = params.ToXmlString()
+
+	data, err := doHttpPost(PlaceOrderUrl, []byte(postData))
 	if err != nil {
 		return nil, err
 	}
-
-	log.Debug(string(data))
 
 	resp, err := ParsePlaceOrderResponse(data)
 	if err != nil {
 		return nil, err
 	}
-
-	log.Debug(resp)
 
 	if resp.IsSuccess() {
 		ok, err := Verify(resp, m.AppKey, resp.Sign)
@@ -91,50 +124,76 @@ func (m *Merchant) PlaceOrder(orderId, goodsname, desc, clientIp, notifyUrl stri
 	return resp, nil
 }
 
+// 统一下单 https://pay.weixin.qq.com/wiki/doc/api/native.php?chapter=9_1 APP
+func (m *Merchant) PlaceOrderApp(orderId, product_id, goodsname, desc, clientIp, notifyUrl string, amount int64, attach string) (*PlaceOrderResponse, error) {
+	order := UnifiedOrder{
+		Body:           goodsname,
+		Detail:         &desc,
+		OutTradeNo:     orderId,
+		TotalFee:       amount,
+		SpbillCreateIp: clientIp,
+		NotifyUrl:      notifyUrl,
+		TradeType:      APP,
+	}
+	if product_id != "" {
+		order.ProductId = &product_id
+	}
+	if attach != "" {
+		order.Attach = &attach
+	}
+	return m.PlaceOrder(order)
+}
+
+// 统一下单 https://pay.weixin.qq.com/wiki/doc/api/H5.php?chapter=9_20 H5
+func (m *Merchant) PlaceOrderH5(orderId, product_id, goodsname, desc, clientIp, notifyUrl string, amount int64, scene map[string]string, attach string) (*PlaceOrderResponse, error) {
+	order := UnifiedOrder{
+		Body:           goodsname,
+		Detail:         &desc,
+		OutTradeNo:     orderId,
+		TotalFee:       amount,
+		SpbillCreateIp: clientIp,
+		NotifyUrl:      notifyUrl,
+		TradeType:      MWEB,
+	}
+	if scene != nil {
+		sceneInfo := map[string]interface{}{
+			"h5_info": scene,
+		}
+		p, _ := json.Marshal(sceneInfo)
+		scenejson := string(p)
+		order.SceneInfo = &scenejson
+	}
+	if product_id != "" {
+		order.ProductId = &product_id
+	}
+	if attach != "" {
+		order.Attach = &attach
+	}
+	return m.PlaceOrder(order)
+}
+
 // 统一下单 https://pay.weixin.qq.com/wiki/doc/api/native.php?chapter=9_1 JSAPI
-func (m *Merchant) PlaceOrderJSAPI(orderId, goodsname, desc, clientIp, notifyUrl string, amount int64, openID string) (*PlaceOrderResponse, error) {
-	var params = Params{
-		{"appid", m.AppId},
-		{"body", goodsname},
-		{"detail", desc},
-		{"mch_id", m.MchId},
-		{"nonce_str", NewNonceString()},
-		{"notify_url", notifyUrl},
-		{"out_trade_no", orderId},
-		{"product_id", orderId},
-		{"spbill_create_ip", clientIp},
-		{"total_fee", fmt.Sprintf("%d", amount)},
-		{"openid", openID},
-		{"trade_type", "JSAPI"},
+func (m *Merchant) PlaceOrderJSAPI(orderId, product_id, goodsname, desc, clientIp, notifyUrl string, amount int64, openID string, attach string) (*PlaceOrderResponse, error) {
+	order := UnifiedOrder{
+		Body:           goodsname,
+		Detail:         &desc,
+		NotifyUrl:      notifyUrl,
+		OutTradeNo:     orderId,
+		TotalFee:       amount,
+		SpbillCreateIp: clientIp,
+		TradeType:      JSAPI,
+		Openid:         &openID,
 	}
 
-	postData := []byte(m.Sign(params))
-	log.Debug(string(postData))
-	data, err := doHttpPost(PlaceOrderUrl, postData)
-	if err != nil {
-		return nil, err
+	if attach != "" {
+		order.Attach = &attach
 	}
 
-	log.Debug(string(data))
-
-	resp, err := ParsePlaceOrderResponse(data)
-	if err != nil {
-		return nil, err
+	if product_id != "" {
+		order.ProductId = &product_id
 	}
 
-	log.Debug(resp)
-
-	if resp.IsSuccess() {
-		ok, err := Verify(resp, m.AppKey, resp.Sign)
-		if err != nil {
-			return nil, err
-		}
-
-		if !ok {
-			return nil, errors.New("signature error")
-		}
-	}
-	return resp, nil
+	return m.PlaceOrder(order)
 }
 
 func (m *Merchant) CloseOrder(orderId string) (*CloseOrderResponse, error) {
@@ -145,7 +204,7 @@ func (m *Merchant) CloseOrder(orderId string) (*CloseOrderResponse, error) {
 		{"nonce_str", NewNonceString()},
 	}
 
-	data, err := doHttpPost(CloseOrderUrl, []byte(m.Sign(params)))
+	data, err := doHttpPost(CloseOrderUrl, []byte(m.Sign(params).ToXmlString()))
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +221,7 @@ func (m *Merchant) QueryOrderByTransId(transId string) (*PayResult, error) {
 		{"transaction_id", transId},
 	}
 
-	data, err := doHttpPost(QueryOrderUrl, []byte(m.Sign(params)))
+	data, err := doHttpPost(QueryOrderUrl, []byte(m.Sign(params).ToXmlString()))
 	if err != nil {
 		return nil, err
 	}
@@ -179,7 +238,7 @@ func (m *Merchant) QueryOrderByOrderId(orderId string) ([]byte, *PayResult, erro
 		{"out_trade_no", orderId},
 	}
 
-	data, err := doHttpPost(QueryOrderUrl, []byte(m.Sign(params)))
+	data, err := doHttpPost(QueryOrderUrl, []byte(m.Sign(params).ToXmlString()))
 	if err != nil {
 		return nil, nil, err
 	}
@@ -204,7 +263,6 @@ func (m *Merchant) GenQRLink(productId string) string {
 
 	sign := Sign(params, m.AppKey)
 	params = append(params, Param{"sign", sign})
-	fmt.Println(params)
 	return fmt.Sprintf("weixin://wxpay/bizpayurl?%s", params.ToQueryString())
 }
 
