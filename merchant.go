@@ -144,7 +144,29 @@ func (m *Merchant) PlaceOrderApp(orderId, product_id, goodsname, desc, clientIp,
 	return m.PlaceOrder(order)
 }
 
+// 统一下单 https://pay.weixin.qq.com/wiki/doc/api/native.php?chapter=9_1 APP
+func (m *Merchant) PlaceOrderNative(orderId, product_id, goodsname, desc, clientIp, notifyUrl string, amount int64, attach string) (*PlaceOrderResponse, error) {
+	order := UnifiedOrder{
+		Body:           goodsname,
+		Detail:         &desc,
+		OutTradeNo:     orderId,
+		TotalFee:       amount,
+		SpbillCreateIp: clientIp,
+		NotifyUrl:      notifyUrl,
+		TradeType:      NATIVE,
+	}
+	if product_id != "" {
+		order.ProductId = &product_id
+	}
+	if attach != "" {
+		order.Attach = &attach
+	}
+	return m.PlaceOrder(order)
+}
+
 // 统一下单 https://pay.weixin.qq.com/wiki/doc/api/H5.php?chapter=9_20 H5
+// 注意事项 https://pay.weixin.qq.com/wiki/doc/api/H5.php?chapter=15_4
+// 商家参数格式有误，请联系商家解决：如果是APP里调起H5支付，需要在webview中手动设置referer
 func (m *Merchant) PlaceOrderH5(orderId, product_id, goodsname, desc, clientIp, notifyUrl string, amount int64, scene map[string]string, attach string) (*PlaceOrderResponse, error) {
 	order := UnifiedOrder{
 		Body:           goodsname,
